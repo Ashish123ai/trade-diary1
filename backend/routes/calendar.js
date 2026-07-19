@@ -1,18 +1,19 @@
 const express = require('express');
-const db = require('../db');
+const { Trade } = require('../db');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/calendar/:year/:month  (month is 1-12)
-router.get('/:year/:month', auth, (req, res) => {
+router.get('/:year/:month', auth, async (req, res) => {
   const { year, month } = req.params;
   const monthStr = String(month).padStart(2, '0');
   const prefix = `${year}-${monthStr}`;
 
-  const trades = db.prepare(
-    `SELECT * FROM trades WHERE user_id = ? AND trade_date LIKE ? ORDER BY trade_date ASC`
-  ).all(req.userId, `${prefix}%`);
+  const trades = await Trade.find({
+    user_id: req.userId,
+    trade_date: { $regex: `^${prefix}` }
+  }).sort({ trade_date: 1 });
 
   const dayMap = {};
   trades.forEach(t => {
@@ -43,10 +44,8 @@ router.get('/:year/:month', auth, (req, res) => {
 });
 
 // GET /api/calendar/day/:date  (date = YYYY-MM-DD)
-router.get('/day/:date', auth, (req, res) => {
-  const trades = db.prepare(
-    'SELECT * FROM trades WHERE user_id = ? AND trade_date = ? ORDER BY id ASC'
-  ).all(req.userId, req.params.date);
+router.get('/day/:date', auth, async (req, res) => {
+  const trades = await Trade.find({ user_id: req.userId, trade_date: req.params.date }).sort({ _id: 1 });
 
   const totalPnl = trades.reduce((a, t) => a + t.pnl_amount, 0);
   const wins = trades.filter(t => t.pnl_amount > 0).length;

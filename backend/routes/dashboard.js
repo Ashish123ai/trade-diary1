@@ -1,22 +1,16 @@
 const express = require('express');
-const db = require('../db');
+const { Trade } = require('../db');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-function parseJsonSafe(str, fallback) {
-  try { return JSON.parse(str); } catch { return fallback; }
-}
-
-router.get('/stats', auth, (req, res) => {
+router.get('/stats', auth, async (req, res) => {
   const { range = 30 } = req.query;
   const sinceDate = new Date();
   sinceDate.setDate(sinceDate.getDate() - parseInt(range));
   const sinceStr = sinceDate.toISOString().slice(0, 10);
 
-  const trades = db.prepare(
-    'SELECT * FROM trades WHERE user_id = ? AND trade_date >= ? ORDER BY trade_date ASC'
-  ).all(req.userId, sinceStr);
+  const trades = await Trade.find({ user_id: req.userId, trade_date: { $gte: sinceStr } }).sort({ trade_date: 1 });
 
   if (trades.length === 0) {
     return res.json({
@@ -38,9 +32,11 @@ router.get('/stats', auth, (req, res) => {
   const avgRR = rrValues.length ? rrValues.reduce((a, b) => a + b, 0) / rrValues.length : 0;
 
   const now = new Date();
-  const tradesThisMonth = db.prepare(
-    `SELECT COUNT(*) as c FROM trades WHERE user_id = ? AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
-  ).get(req.userId).c;
+  const monthPrefix = now.toISOString().slice(0, 7); // YYYY-MM
+  const tradesThisMonth = await Trade.countDocuments({
+    user_id: req.userId,
+    trade_date: { $regex: `^${monthPrefix}` }
+  });
 
   const avgConfidence = trades.reduce((a, t) => a + (t.entry_confidence || 0), 0) / trades.length;
   const confidenceIndex = Math.round((avgConfidence / 10) * 100);
@@ -71,7 +67,7 @@ router.get('/stats', auth, (req, res) => {
 
   const mistakeMap = {};
   trades.forEach(t => {
-    parseJsonSafe(t.mistakes_made, []).forEach(m => {
+    (t.mistakes_made || []).forEach(m => {
       mistakeMap[m] = (mistakeMap[m] || 0) + 1;
     });
   });

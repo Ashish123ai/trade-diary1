@@ -1,16 +1,14 @@
 const express = require('express');
-const db = require('../db');
+const { Trade } = require('../db');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-function getTrades(userId, range) {
+async function getTrades(userId, range) {
   const since = new Date();
   since.setDate(since.getDate() - parseInt(range || 30));
   const sinceStr = since.toISOString().slice(0, 10);
-  return db.prepare(
-    'SELECT * FROM trades WHERE user_id = ? AND trade_date >= ? ORDER BY trade_date ASC'
-  ).all(userId, sinceStr);
+  return Trade.find({ user_id: userId, trade_date: { $gte: sinceStr } }).sort({ trade_date: 1 });
 }
 
 function weekdayName(dateStr) {
@@ -23,8 +21,8 @@ function rr(t) {
 }
 
 // GET /api/reports/performance
-router.get('/performance', auth, (req, res) => {
-  const trades = getTrades(req.userId, req.query.range);
+router.get('/performance', auth, async (req, res) => {
+  const trades = await getTrades(req.userId, req.query.range);
   if (trades.length === 0) return res.json({ empty: true });
 
   const wins = trades.filter(t => t.pnl_amount > 0);
@@ -186,8 +184,8 @@ router.get('/performance', auth, (req, res) => {
 });
 
 // GET /api/reports/psychology
-router.get('/psychology', auth, (req, res) => {
-  const trades = getTrades(req.userId, req.query.range);
+router.get('/psychology', auth, async (req, res) => {
+  const trades = await getTrades(req.userId, req.query.range);
   if (trades.length === 0) return res.json({ empty: true });
 
   const emoMap = {};
@@ -213,8 +211,8 @@ router.get('/psychology', auth, (req, res) => {
 });
 
 // GET /api/reports/risk
-router.get('/risk', auth, (req, res) => {
-  const trades = getTrades(req.userId, req.query.range);
+router.get('/risk', auth, async (req, res) => {
+  const trades = await getTrades(req.userId, req.query.range);
   if (trades.length === 0) return res.json({ empty: true });
 
   let running = 0, peak = 0, maxDrawdown = 0;
@@ -238,8 +236,8 @@ router.get('/risk', auth, (req, res) => {
 });
 
 // GET /api/reports/journal
-router.get('/journal', auth, (req, res) => {
-  const trades = getTrades(req.userId, req.query.range || 3650);
+router.get('/journal', auth, async (req, res) => {
+  const trades = await getTrades(req.userId, req.query.range || 3650);
   const journal = trades
     .filter(t => t.trade_analysis || t.lessons_learned)
     .map(t => ({

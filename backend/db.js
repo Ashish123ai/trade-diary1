@@ -1,69 +1,70 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const mongoose = require('mongoose');
 
-const db = new Database(path.join(__dirname, 'tradediary.db'));
-db.pragma('journal_mode = WAL');
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB Atlas connected'))
+  .catch((err) => {
+    console.error('MongoDB connection error:', err.message);
+  });
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  full_name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err.message);
+});
 
-CREATE TABLE IF NOT EXISTS trades (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  symbol TEXT NOT NULL,
-  trade_date TEXT NOT NULL,
-  entry_price REAL NOT NULL,
-  exit_price REAL NOT NULL,
-  quantity REAL NOT NULL,
-  total_amount REAL NOT NULL,
-  pnl_amount REAL NOT NULL,
-  pnl_percent REAL NOT NULL,
-  direction TEXT NOT NULL DEFAULT 'Long',
-  stop_loss REAL DEFAULT 0,
-  target REAL DEFAULT 0,
-  risk_reward TEXT,
-  strategy TEXT,
-  outcome_summary TEXT,
-  trade_analysis TEXT,
-  rules_followed TEXT DEFAULT '[]',
-  screenshots TEXT DEFAULT '[]',
-  entry_confidence INTEGER DEFAULT 5,
-  satisfaction_rating INTEGER DEFAULT 5,
-  emotional_state TEXT,
-  mistakes_made TEXT DEFAULT '[]',
-  lessons_learned TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_trades_user ON trades(user_id);
-CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date);
-`);
-
-// --- Lightweight migrations for columns added after initial release ---
-const existingUserCols = db.prepare(`PRAGMA table_info(users)`).all().map((c) => c.name);
-if (!existingUserCols.includes('is_verified')) {
-  db.exec(`ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0`);
-}
-if (!existingUserCols.includes('otp_code')) {
-  db.exec(`ALTER TABLE users ADD COLUMN otp_code TEXT`);
-}
-if (!existingUserCols.includes('otp_expires_at')) {
-  db.exec(`ALTER TABLE users ADD COLUMN otp_expires_at TEXT`);
+function addIdTransform(schema) {
+  schema.set('toJSON', {
+    virtuals: true,
+    transform: (doc, ret) => {
+      ret.id = ret._id.toString();
+      delete ret._id;
+      delete ret.__v;
+      return ret;
+    }
+  });
 }
 
-const existingCols = db.prepare(`PRAGMA table_info(trades)`).all().map((c) => c.name);
-if (!existingCols.includes('strike_price')) {
-  db.exec(`ALTER TABLE trades ADD COLUMN strike_price REAL DEFAULT NULL`);
-}
-if (!existingCols.includes('option_type')) {
-  db.exec(`ALTER TABLE trades ADD COLUMN option_type TEXT DEFAULT NULL`);
-}
+const userSchema = new mongoose.Schema({
+  full_name: { type: String, required: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password_hash: { type: String, required: true },
+  is_verified: { type: Boolean, default: false },
+  otp_code: { type: String, default: null },
+  otp_expires_at: { type: Date, default: null }
+}, { timestamps: { createdAt: 'created_at', updatedAt: false } });
 
-module.exports = db;
+const tradeSchema = new mongoose.Schema({
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  symbol: { type: String, required: true },
+  trade_date: { type: String, required: true }, // kept as 'YYYY-MM-DD' string for easy prefix/range queries
+  entry_price: { type: Number, required: true, default: 0 },
+  exit_price: { type: Number, required: true, default: 0 },
+  quantity: { type: Number, required: true, default: 0 },
+  total_amount: { type: Number, required: true, default: 0 },
+  pnl_amount: { type: Number, required: true, default: 0 },
+  pnl_percent: { type: Number, required: true, default: 0 },
+  direction: { type: String, default: 'Long' },
+  stop_loss: { type: Number, default: 0 },
+  target: { type: Number, default: 0 },
+  risk_reward: { type: String, default: '1:0' },
+  strategy: { type: String, default: null },
+  outcome_summary: { type: String, default: null },
+  trade_analysis: { type: String, default: null },
+  rules_followed: { type: [String], default: [] },
+  screenshots: { type: [String], default: [] },
+  entry_confidence: { type: Number, default: 5 },
+  satisfaction_rating: { type: Number, default: 5 },
+  emotional_state: { type: String, default: null },
+  mistakes_made: { type: [String], default: [] },
+  lessons_learned: { type: String, default: null },
+  strike_price: { type: Number, default: null },
+  option_type: { type: String, default: null }
+}, { timestamps: { createdAt: 'created_at', updatedAt: false } });
+
+tradeSchema.index({ user_id: 1, trade_date: 1 });
+
+addIdTransform(userSchema);
+addIdTransform(tradeSchema);
+
+const User = mongoose.model('User', userSchema);
+const Trade = mongoose.model('Trade', tradeSchema);
+
+module.exports = { User, Trade, mongoose };

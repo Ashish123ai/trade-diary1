@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../db');
+const { User } = require('../db');
 const auth = require('../middleware/auth');
 const { sendOtpEmail } = require('../mailer');
 require('dotenv').config();
@@ -13,7 +13,7 @@ function generateOtp() {
 }
 
 function otpExpiry() {
-  return new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  return new Date(Date.now() + 10 * 60 * 1000);
 }
 
 router.post('/register', async (req, res) => {
@@ -26,7 +26,8 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
 
-  const existing = db.prepare('SELECT id, is_verified FROM users WHERE email = ?').get(email.toLowerCase());
+  const emailLower = email.toLowerCase();
+  const existing = await User.findOne({ email: emailLower });
   if (existing && existing.is_verified) {
     return res.status(409).json({ error: 'An account with this email already exists' });
   }
@@ -36,30 +37,37 @@ router.post('/register', async (req, res) => {
   const expiresAt = otpExpiry();
 
   if (existing) {
-    // Registered before but never verified -- refresh their details + send a new code.
-    db.prepare('UPDATE users SET full_name = ?, password_hash = ?, otp_code = ?, otp_expires_at = ? WHERE id = ?')
-      .run(full_name, password_hash, otp, expiresAt, existing.id);
+    existing.full_name = full_name;
+    existing.password_hash = password_hash;
+    existing.otp_code = otp;
+    existing.otp_expires_at = expiresAt;
+    await existing.save();
   } else {
-    db.prepare(
-      'INSERT INTO users (full_name, email, password_hash, is_verified, otp_code, otp_expires_at) VALUES (?, ?, ?, 0, ?, ?)'
-    ).run(full_name, email.toLowerCase(), password_hash, otp, expiresAt);
+    await User.create({
+      full_name,
+      email: emailLower,
+      password_hash,
+      is_verified: false,
+      otp_code: otp,
+      otp_expires_at: expiresAt
+    });
   }
 
   try {
-    await sendOtpEmail(email.toLowerCase(), otp);
+    await sendOtpEmail(emailLower, otp);
   } catch (err) {
     console.error('Failed to send OTP email:', err.message);
     return res.status(500).json({ error: 'Could not send verification email. Please check the address and try again.' });
   }
 
-  res.status(201).json({ needsVerification: true, email: email.toLowerCase() });
+  res.status(201).json({ needsVerification: true, email: emailLower });
 });
 
-router.post('/verify-otp', (req, res) => {
+router.post('/verify-otp', async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ error: 'Email and code are required' });
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) return res.status(404).json({ error: 'Account not found' });
   if (user.is_verified) return res.status(400).json({ error: 'Account already verified' });
 
@@ -70,7 +78,10 @@ router.post('/verify-otp', (req, res) => {
     return res.status(400).json({ error: 'Code expired. Please request a new one.' });
   }
 
-  db.prepare('UPDATE users SET is_verified = 1, otp_code = NULL, otp_expires_at = NULL WHERE id = ?').run(user.id);
+  user.is_verified = true;
+  user.otp_code = null;
+  user.otp_expires_at = null;
+  await user.save();
 
   const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
   res.json({
@@ -83,13 +94,15 @@ router.post('/resend-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) return res.status(404).json({ error: 'Account not found' });
   if (user.is_verified) return res.status(400).json({ error: 'Account already verified' });
 
   const otp = generateOtp();
   const expiresAt = otpExpiry();
-  db.prepare('UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE id = ?').run(otp, expiresAt, user.id);
+  user.otp_code = otp;
+  user.otp_expires_at = expiresAt;
+  await user.save();
 
   try {
     await sendOtpEmail(email.toLowerCase(), otp);
@@ -101,13 +114,13 @@ router.post('/resend-otp', async (req, res) => {
   res.json({ success: true });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  const user = await User.findOne({ email: email.toLowerCase() });
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
@@ -127,10 +140,10 @@ router.post('/login', (req, res) => {
   });
 });
 
-router.get('/me', auth, (req, res) => {
-  const user = db.prepare('SELECT id, full_name, email, created_at FROM users WHERE id = ?').get(req.userId);
+router.get('/me', auth, async (req, res) => {
+  const user = await User.findById(req.userId).select('full_name email created_at');
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ user });
+  res.json({ user: { id: user.id, full_name: user.full_name, email: user.email, created_at: user.created_at } });
 });
 
 module.exports = router;
