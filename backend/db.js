@@ -47,6 +47,17 @@ CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date);
 `);
 
 // --- Lightweight migrations for columns added after initial release ---
+const existingUserCols = db.prepare(`PRAGMA table_info(users)`).all().map((c) => c.name);
+if (!existingUserCols.includes('is_verified')) {
+  db.exec(`ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0`);
+}
+if (!existingUserCols.includes('otp_code')) {
+  db.exec(`ALTER TABLE users ADD COLUMN otp_code TEXT`);
+}
+if (!existingUserCols.includes('otp_expires_at')) {
+  db.exec(`ALTER TABLE users ADD COLUMN otp_expires_at TEXT`);
+}
+
 const existingCols = db.prepare(`PRAGMA table_info(trades)`).all().map((c) => c.name);
 if (!existingCols.includes('strike_price')) {
   db.exec(`ALTER TABLE trades ADD COLUMN strike_price REAL DEFAULT NULL`);

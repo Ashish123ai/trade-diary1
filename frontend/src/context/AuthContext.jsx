@@ -37,12 +37,23 @@ export function AuthProvider({ children }) {
     return res.data.user;
   }
 
+  // Registering no longer logs the user in directly -- an OTP is emailed
+  // first and verifyOtp() below is what actually issues the session.
   async function register(full_name, email, password) {
     const res = await api.post('/auth/register', { full_name, email, password });
+    return res.data; // { needsVerification: true, email }
+  }
+
+  async function verifyOtp(email, otp) {
+    const res = await api.post('/auth/verify-otp', { email, otp });
     localStorage.setItem('td_token', res.data.token);
     localStorage.setItem('td_user', JSON.stringify(res.data.user));
     setUser(res.data.user);
     return res.data.user;
+  }
+
+  async function resendOtp(email) {
+    await api.post('/auth/resend-otp', { email });
   }
 
   function logout() {
@@ -53,7 +64,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, verifyOtp, resendOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );
