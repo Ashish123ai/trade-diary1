@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trade Diary</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                DEFAULT: 'rgb(var(--brand-rgb) / <alpha-value>)',
+                dark: 'rgb(var(--brand-dark-rgb) / <alpha-value>)'
+              }
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      /* ---- Brand accent: vivid green in light mode, vivid blue in dark mode ---- */
+      :root {
+        color-scheme: light;
+        --brand-rgb: 34 197 94;      /* vivid green */
+        --brand-dark-rgb: 22 163 74; /* deeper green, used for hover states */
+      }
+      html.dark {
+        --brand-rgb: 59 130 246;      /* vivid blue */
+        --brand-dark-rgb: 37 99 235;  /* deeper blue, used for hover states */
+      }
+
+      html { scroll-behavior: smooth; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #e3e2c3; }
+      html.dark body { background-color: #131313; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: #c7c6a5; border-radius: 4px; }
+      html.dark ::-webkit-scrollbar-thumb { background: #2a2a2a; }
+      .input {
+        width: 100%;
+        border: 1px solid #c7c6a5;
+        border-radius: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        background-color: #edecd9;
+        color: #1f1e16;
+        outline: none;
+        transition: border-color 0.15s, background-color 0.15s, color 0.15s, box-shadow 0.15s;
+      }
+      .input:focus { border-color: rgb(var(--brand-rgb)); box-shadow: 0 0 0 2px rgb(var(--brand-rgb) / 0.25); }
+      .input::placeholder { color: #8a8973; }
+      html.dark .input { background-color: #1e1e1e; border-color: #2a2a2a; color: #f2f2f2; }
+      html.dark .input::placeholder { color: #7a7a7a; }
+
+      /* ---- Tactile feedback: buttons/links feel more responsive to press & hover ---- */
+      button, a, .input, select {
+        transition: transform 0.12s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+      }
+      button:active:not(:disabled) { transform: scale(0.96); }
+
+      /* ---- Card hover: any rounded card brightens + lifts toward the cursor ---- */
+      .rounded-xl.bg-white.border-gray-200,
+      .dark .rounded-xl.bg-white.border-gray-200 {
+        transition: border-color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease, background-color 0.2s ease;
+      }
+      .rounded-xl.bg-white.border-gray-200:hover {
+        border-color: rgb(var(--brand-rgb) / 0.65);
+        box-shadow: 0 0 0 1px rgb(var(--brand-rgb) / 0.25), 0 14px 32px -14px rgb(var(--brand-rgb) / 0.45);
+        transform: translateY(-3px);
+      }
+      .bg-brand:hover {
+        box-shadow: 0 6px 22px -6px rgb(var(--brand-rgb) / 0.55);
+      }
+
+      /* ---- Hover tooltips: small popup label for icon-only controls ---- */
+      [data-tip] { position: relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        background: #111827;
+        color: #fff;
+        font-size: 0.7rem;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        padding: 5px 9px;
+        border-radius: 6px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        z-index: 60;
+        box-shadow: 0 6px 16px -4px rgba(0,0,0,0.4);
+      }
+      [data-tip]:hover::after {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      /* ---- Cursor spotlight: soft glow that follows the mouse, brand-tinted ---- */
+      .cursor-glow {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 650px;
+        height: 650px;
+        pointer-events: none;
+        z-index: 0;
+        border-radius: 9999px;
+        transform: translate3d(calc(var(--mx, 50vw) - 325px), calc(var(--my, 50vh) - 325px), 0);
+        background: radial-gradient(circle, rgb(var(--brand-rgb) / var(--glow-o, 0.10)), transparent 70%);
+        transition: opacity 0.6s ease;
+        will-change: transform, opacity;
+      }
+
+      /* ---- Scroll-reveal: cards/sections fade + rise into view ---- */
+      .reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .reveal-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+        .cursor-glow { display: none; }
+        html { scroll-behavior: auto; }
+      }
+
+      /* ---- Light mode: base #e3e2c3 ---- */
+      .bg-white { background-color: #edecd9 !important; }
+      .bg-gray-50 { background-color: #d9d8ba !important; }
+      .bg-gray-100 { background-color: #d0cfae !important; }
+      .bg-black\/40 { background-color: rgba(0,0,0,0.4) !important; }
+
+      .text-gray-900 { color: #1f1e16 !important; }
+      .text-gray-800 { color: #3a3930 !important; }
+      .text-gray-700 { color: #4d4c40 !important; }
+      .text-gray-600 { color: #66655a !important; }
+      .text-gray-500 { color: #66655a !important; }
+      .text-gray-400 { color: #8a8973 !important; }
+
+      .border-gray-200 { border-color: #c7c6a5 !important; }
+      .border-gray-100 { border-color: #d4d3b8 !important; }
+
+      .hover\:bg-gray-50:hover { background-color: #edecd9 !important; }
+      .hover\:bg-gray-100:hover { background-color: #c7c6a5 !important; }
+
+      /* ---- Dark mode: base #131313, overrides everything above ---- */
+      .dark .bg-white { background-color: #1e1e1e !important; }
+      .dark .bg-gray-50 { background-color: #0d0d0d !important; }
+      .dark .bg-gray-100 { background-color: #262626 !important; }
+      .dark .bg-black\/40 { background-color: rgba(0,0,0,0.6) !important; }
+
+      .dark .text-gray-900 { color: #f2f2f2 !important; }
+      .dark .text-gray-800 { color: #dcdcdc !important; }
+      .dark .text-gray-700 { color: #c2c2c2 !important; }
+      .dark .text-gray-600 { color: #9c9c9c !important; }
+      .dark .text-gray-500 { color: #9c9c9c !important; }
+      .dark .text-gray-400 { color: #666666 !important; }
+
+      .dark .border-gray-200 { border-color: #2a2a2a !important; }
+      .dark .border-gray-100 { border-color: #1e1e1e !important; }
+
+      .dark .hover\:bg-gray-50:hover { background-color: #1e1e1e !important; }
+      .dark .hover\:bg-gray-100:hover { background-color: #2a2a2a !important; }
+    </style>
+  </head>
+  <body class="bg-gray-50">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
