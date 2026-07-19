@@ -1,21 +1,17 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD
-  },
-  family: 4 // force IPv4 -- Render's network can't reach Gmail over IPv6
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Without a verified domain on Resend, emails can only be delivered to the
+// address you signed up to Resend with (sandbox mode). Once you verify your
+// own domain in the Resend dashboard, change RESEND_FROM below to something
+// like "Trade Diary <otp@yourdomain.com>" and any user's email will work.
+const FROM = process.env.RESEND_FROM || 'Trade Diary <onboarding@resend.dev>';
 
 async function sendOtpEmail(to, otp) {
-  await transporter.sendMail({
-    from: `"Trade Diary" <${process.env.GMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: FROM,
     to,
     subject: 'Your Trade Diary verification code',
     html: `
@@ -31,6 +27,10 @@ async function sendOtpEmail(to, otp) {
       </div>
     `
   });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to send email via Resend');
+  }
 }
 
 module.exports = { sendOtpEmail };
