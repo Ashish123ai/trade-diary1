@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { fileUrl } from '../api';
 
 export default function TradeSummaryModal({ trade, onClose }) {
   const [tab, setTab] = useState('general');
@@ -91,7 +92,7 @@ export default function TradeSummaryModal({ trade, onClose }) {
             <div className="grid grid-cols-3 gap-3">
               {(trade.screenshots || []).length
                 ? trade.screenshots.map((src) => (
-                    <img key={src} src={src} alt="screenshot" className="rounded-lg border border-gray-200 object-cover h-32 w-full" />
+                    <img key={src} src={fileUrl(src)} alt="screenshot" className="rounded-lg border border-gray-200 object-cover h-32 w-full" />
                   ))
                 : <div className="text-gray-400 text-sm col-span-3">No screenshots uploaded for this trade.</div>}
             </div>
